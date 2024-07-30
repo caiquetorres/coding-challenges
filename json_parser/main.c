@@ -2,6 +2,7 @@
 #include <stdlib.h>
 
 #define MAX_DEPTH 20
+#define FILE_OPTION (1 << 0);
 
 typedef enum token_type {
     LEFT_BRACKET_TOKEN,
@@ -43,6 +44,9 @@ char is_numeric(char);
 char is_valid_escaping_char(char);
 char is_hex(char);
 
+int read_options(int, char **);
+char is_option(string *);
+
 string *create_str(char *);
 void destroy_str(string *);
 void push_c(string *, char);
@@ -78,43 +82,21 @@ int main(int argc, char **argv) {
     null_str = create_str("null");
     true_str = create_str("true");
     false_str = create_str("false");
-    check_file("test/fail1.json");
-    check_file("test/fail2.json");
-    check_file("test/fail3.json");
-    check_file("test/fail4.json");
-    check_file("test/fail5.json");
-    check_file("test/fail6.json");
-    check_file("test/fail7.json");
-    check_file("test/fail8.json");
-    check_file("test/fail9.json");
-    check_file("test/fail10.json");
-    check_file("test/fail11.json");
-    check_file("test/fail12.json");
-    check_file("test/fail13.json");
-    check_file("test/fail14.json");
-    check_file("test/fail15.json");
-    check_file("test/fail16.json");
-    check_file("test/fail17.json");
-    check_file("test/fail18.json");
-    check_file("test/fail19.json");
-    check_file("test/fail20.json");
-    check_file("test/fail21.json");
-    check_file("test/fail22.json");
-    check_file("test/fail23.json");
-    check_file("test/fail24.json");
-    check_file("test/fail25.json");
-    check_file("test/fail26.json");
-    check_file("test/fail27.json");
-    check_file("test/fail28.json");
-    check_file("test/fail29.json");
-    check_file("test/fail30.json");
-    check_file("test/fail31.json");
-    check_file("test/fail32.json");
-    check_file("test/fail33.json");
-    check_file("test/pass1.json");
-    check_file("test/pass2.json");
-    check_file("test/pass3.json");
-    check_file("test/large-file.json");
+    int options;
+    options = read_options(argc, argv);
+    int i = 1;
+    while (i < argc && *(*(argv + i)) == '-') {
+        i++;
+    }
+    int files_count = argc - i;
+    if (files_count == 0) {
+        check_file(NULL);
+    } else {
+        char **files = argv + i;
+        for (int j = 0; j < files_count; j++) {
+            check_file(*(files + j));
+        }
+    }
     destroy_str(null_str);
     destroy_str(true_str);
     destroy_str(false_str);
@@ -135,10 +117,11 @@ void check_file(char *file_path) {
         token t = peek_token(&token_stream);
         res = 0;
     }
+    char *file_name = file_path == NULL ? "stdin" : file_path;
     if (res) {
-        printf("%s valid\n", file_path);
+        printf("%s valid\n", file_name);
     } else {
-        printf("%s invalid\n", file_path);
+        printf("%s invalid\n", file_name);
     }
     destroy_token_stream(&token_stream);
 }
@@ -221,12 +204,19 @@ char compare_str(string *str1, string *str2) {
 }
 
 char_stream create_char_stream(char *file_path) {
-    FILE *file = NULL;
-    file = fopen(file_path, "r");
-    char c = fgetc(file);
     char_stream stream;
-    stream.file = file;
-    stream.curr = c;
+    if (file_path != NULL) {
+        FILE *file = NULL;
+        file = fopen(file_path, "r");
+        if (file == NULL) {
+            fprintf(stderr, "ccjsonparser: file '%s' does not exist\n", file_path);
+            exit(0);
+        }
+        stream.file = file;
+    } else {
+        stream.file = stdin;
+    }
+    stream.curr = fgetc(stream.file);
     return stream;
 }
 
@@ -550,4 +540,29 @@ int check_object_property(token_stream *token_stream, int depth) {
         return 0;
     }
     return check_expression(token_stream, depth);
+}
+
+char is_option(string *arg) {
+    return arg->len > 0 && *(arg->buffer) == '-';
+}
+
+int read_options(int argc, char **argv) {
+    int options = 0;
+    string *file_option = create_str("-f");
+    string *file_option_lg = create_str("--file");
+    for (int i = 1; i < argc; i++) {
+        string *arg = create_str(*(argv + i));
+        if (!is_option(arg)) {
+            continue;
+        }
+        if (compare_str(arg, file_option) || compare_str(arg, file_option_lg)) {
+            options |= FILE_OPTION;
+        } else {
+            fprintf(stderr, "ccjsonparser: invalid option '%s'\n", arg->buffer);
+        }
+        destroy_str(arg);
+    }
+    destroy_str(file_option);
+    destroy_str(file_option_lg);
+    return options;
 }
