@@ -18,8 +18,8 @@ typedef enum token_type {
 
 typedef struct string {
     char *buffer;
-    unsigned int len;
-    unsigned int mult;
+    int len;
+    int alloc;
 } string;
 
 typedef struct token {
@@ -38,8 +38,10 @@ typedef struct token_stream {
 
 char is_whitespace(char);
 char is_numeric(char);
+char is_valid_escaping_char(char);
 
 string *create_str(char *);
+void destroy_str(string *);
 void push_c(string *, char);
 char compare_str(string *, string *);
 
@@ -57,11 +59,11 @@ char is_token_stream_end(token_stream *);
 void destroy_token_stream(token_stream *);
 void print_token(token *);
 
-unsigned int parse_initial_expression(token_stream *);
-unsigned int parse_expression(token_stream *);
-unsigned int parse_array_expression(token_stream *);
-unsigned int parse_object_expression(token_stream *);
-unsigned int parse_object_property(token_stream *);
+int check_initial_expression(token_stream *);
+int check_expression(token_stream *);
+int check_array_expression(token_stream *);
+int check_object_expression(token_stream *);
+int check_object_property(token_stream *);
 
 void check_file(char *);
 
@@ -73,27 +75,71 @@ int main(int argc, char **argv) {
     null_str = create_str("null");
     true_str = create_str("true");
     false_str = create_str("false");
-    check_file("tests/large-file.json");
+    check_file("tests/valid.json");
+    // check_file("test/fail1.json");
+    // check_file("test/fail2.json");
+    // check_file("test/fail3.json");
+    // check_file("test/fail4.json");
+    // check_file("test/fail5.json");
+    // check_file("test/fail6.json");
+    // check_file("test/fail7.json");
+    // check_file("test/fail8.json");
+    // check_file("test/fail9.json");
+    // check_file("test/fail10.json");
+    // check_file("test/fail11.json");
+    // check_file("test/fail12.json");
+    // check_file("test/fail13.json");
+    // check_file("test/fail14.json");
+    // check_file("test/fail15.json");
+    // check_file("test/fail16.json");
+    // check_file("test/fail17.json");
+    // check_file("test/fail18.json");
+    // check_file("test/fail19.json");
+    // check_file("test/fail20.json");
+    // check_file("test/fail21.json");
+    // check_file("test/fail22.json");
+    // check_file("test/fail23.json");
+    // check_file("test/fail24.json");
+    // check_file("test/fail25.json");
+    // check_file("test/fail26.json");
+    // check_file("test/fail27.json");
+    // check_file("test/fail28.json");
+    // check_file("test/fail29.json");
+    // check_file("test/fail30.json");
+    // check_file("test/fail31.json");
+    // check_file("test/fail32.json");
+    // check_file("test/fail33.json");
+    // check_file("test/pass1.json");
+    // check_file("test/pass2.json");
+    // check_file("test/pass3.json");
+    destroy_str(null_str);
+    destroy_str(true_str);
+    destroy_str(false_str);
     return 0;
 }
 
 void check_file(char *file_path) {
     char_stream char_stream = create_char_stream(file_path);
     token_stream token_stream = create_token_stream(&char_stream);
-    unsigned int res = parse_initial_expression(&token_stream);
-    if (peek_token(&token_stream).type != EOF_TOKEN) {
-        token t = peek_token(&token_stream);
-        res = 0;
+    token t;
+    while ((t = next_token(&token_stream)).type != EOF_TOKEN) {
+        print_token(&t);
     }
-    if (res) {
-        printf("%s valid\n", file_path);
-    } else {
-        printf("%s invalid\n", file_path);
-    }
+    // int res = check_initial_expression(&token_stream);
+    // if (peek_token(&token_stream).type != EOF_TOKEN) {
+    //     token t = peek_token(&token_stream);
+    //     res = 0;
+    // }
+    // if (res) {
+    //     printf("%s valid\n", file_path);
+    // } else {
+    //     printf("%s invalid\n", file_path);
+    // }
+    destroy_token_stream(&token_stream);
 }
 
 char is_whitespace(char c) {
-    char whitespaces[] = {' ', '\t', '\n', '\v', '\f', '\r' };
+    char whitespaces[] = { ' ', '\t', '\n', '\v', '\f', '\r' };
     for (int i = 0; i < 6; i++) {
         if (c == *(whitespaces + i)) {
             return 1;
@@ -106,35 +152,51 @@ char is_numeric(char c) {
     return c >= '0' && c <= '9';
 }
 
+char is_valid_escaping_char(char c) {
+    char valid_espace_chars[] = { 'b', 'f', 'n', 'r', 't', '\"', '\\' };
+    for (int i = 0; i < 6; i++) {
+        if (c == *(valid_espace_chars + i)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 char is_alpha(char c) {
     return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
 }
 
 string *create_str(char *init) {
-    unsigned int len = 0;
+    int len = 0;
     while (*(init + len) != '\0') {
         len++;
     }
-    unsigned int mult = (len + 100) / 100;
+    int alloc = (len + 101) / 100;
     string *str = NULL;
     str = (string *)malloc(sizeof(string));
     str->len = len;
-    str->buffer = (char *)malloc(mult * 100);
-    str->mult = mult;
+    str->buffer = (char *)malloc(alloc * 100);
+    str->alloc = alloc;
     for (int i = 0; i < len; i++) {
         *(str->buffer + i) = *(init + i);
     }
+    *(str->buffer + len) = '\0';
     return str;
 }
 
+void destroy_str(string *str) {
+    free(str->buffer);
+    free(str);
+}
+
 void push_c(string *str, char c) {
-    if (str->len + 2 > str->mult * 100) {
-        str->mult++;
-        str->buffer = (char *)realloc(str->buffer, str->mult * 100);
+    if (str->len + 2 > str->alloc * 100) {
+        str->alloc++;
+        str->buffer = (char *)realloc(str->buffer, str->alloc * 100);
     }
     *(str->buffer + str->len) = c;
-    *(str->buffer + str->len + 1) = '\0';
     str->len++;
+    *(str->buffer + str->len) = '\0';
 }
 
 char compare_str(string *str1, string *str2) {
@@ -197,10 +259,19 @@ token get_token(token_stream *token_stream) {
             token.type = RIGHT_BRACE_TOKEN;
             break;
         case '"':
-            c = next_char(token_stream->char_stream); // "
+            c = next_char(token_stream->char_stream); // first char
             while (c != EOF && c != '"') {
                 if (c == '\\') {
+                    char n = peek_char(token_stream->char_stream);
+                    if (!is_valid_escaping_char(n)) {
+                        token.type = BAD_TOKEN;
+                        return token;
+                    }
                     next_char(token_stream->char_stream);
+                }
+                if (c == '\t' || c == '\n') {
+                    token.type = BAD_TOKEN;
+                    return token;
                 }
                 c = next_char(token_stream->char_stream);
             }
@@ -229,13 +300,42 @@ token get_token(token_stream *token_stream) {
                 } else {
                     token.type = BAD_TOKEN;
                 }
+                destroy_str(keyword);
                 return token;
-            } else if (is_numeric(c)) {
+            } else if (is_numeric(c) || c == '-') {
+                if (c == '-') {
+                    next_char(token_stream->char_stream); // -
+                }
+                if (c == '0') {
+                    int len = 0;
+                    while (c == '0') {
+                        c = next_char(token_stream->char_stream);
+                        len++;
+                    }
+                    if (len > 1 && c != '.') {
+                        token.type = BAD_TOKEN;
+                        return token;
+                    }
+                }
                 while (is_numeric(peek_char(token_stream->char_stream))) {
                     next_char(token_stream->char_stream);
                 }
                 if (peek_char(token_stream->char_stream) == '.') {
                     next_char(token_stream->char_stream); // .
+                    if (!is_numeric(peek_char(token_stream->char_stream))) {
+                        token.type = BAD_TOKEN;
+                        return token;
+                    }
+                    while (is_numeric(peek_char(token_stream->char_stream))) {
+                        next_char(token_stream->char_stream);
+                    }
+                }
+                if (peek_char(token_stream->char_stream) == 'e' || peek_char(token_stream->char_stream) == 'E') {
+                    next_char(token_stream->char_stream); // e, E
+                    c = peek_char(token_stream->char_stream);
+                    if (c == '+' || c == '-') {
+                        next_char(token_stream->char_stream); // +, -
+                    }
                     if (!is_numeric(peek_char(token_stream->char_stream))) {
                         token.type = BAD_TOKEN;
                         return token;
@@ -268,6 +368,10 @@ token next_token(token_stream *token_stream) {
 
 token peek_token(token_stream *token_stream) {
     return token_stream->curr;
+}
+
+void destroy_token_stream(token_stream *token_stream) {
+    destroy_char_stream(token_stream->char_stream);
 }
 
 void print_token(token *token) {
@@ -311,18 +415,18 @@ void print_token(token *token) {
     }
 }
 
-unsigned int parse_initial_expression(token_stream *token_stream) {
+int check_initial_expression(token_stream *token_stream) {
     token token = peek_token(token_stream);
     if (token.type == LEFT_BRACE_TOKEN) {
-        return parse_array_expression(token_stream);
+        return check_array_expression(token_stream);
     } else if (token.type == LEFT_BRACKET_TOKEN) {
-        return parse_object_expression(token_stream);
+        return check_object_expression(token_stream);
     } else {
         return 0;
     }
 }
 
-unsigned int parse_expression(token_stream *token_stream) {
+int check_expression(token_stream *token_stream) {
     token token = peek_token(token_stream);
     if (token.type == NULL_TOKEN) {
         next_token(token_stream);
@@ -337,22 +441,22 @@ unsigned int parse_expression(token_stream *token_stream) {
         next_token(token_stream);
         return 1;
     } else if (token.type == LEFT_BRACE_TOKEN) {
-        return parse_array_expression(token_stream);
+        return check_array_expression(token_stream);
     } else if (token.type == LEFT_BRACKET_TOKEN) {
-        return parse_object_expression(token_stream);
+        return check_object_expression(token_stream);
     } else {
         return 0;
     }
 }
 
-unsigned int parse_array_expression(token_stream *token_stream) {
+int check_array_expression(token_stream *token_stream) {
     token left_BRACE = next_token(token_stream); // [
     if (left_BRACE.type != LEFT_BRACE_TOKEN) {
         return 0;
     }
-    unsigned int res = 1;
+    int res = 1;
     while (peek_token(token_stream).type != RIGHT_BRACE_TOKEN) {
-        res = res && parse_expression(token_stream);
+        res = res && check_expression(token_stream);
         if (!res) {
             return 0;
         }
@@ -374,14 +478,14 @@ unsigned int parse_array_expression(token_stream *token_stream) {
     return 1;
 }
 
-unsigned int parse_object_expression(token_stream *token_stream) {
+int check_object_expression(token_stream *token_stream) {
     token left_BRACKET = next_token(token_stream); // {
     if (left_BRACKET.type != LEFT_BRACKET_TOKEN) {
         return 0;
     }
-    unsigned int res = 1;
+    int res = 1;
     while (peek_token(token_stream).type != RIGHT_BRACKET_TOKEN) {
-        res = res && parse_object_property(token_stream);
+        res = res && check_object_property(token_stream);
         if (!res) {
             return 0;
         }
@@ -406,7 +510,7 @@ unsigned int parse_object_expression(token_stream *token_stream) {
     return 1;
 }
 
-unsigned int parse_object_property(token_stream *token_stream) {
+int check_object_property(token_stream *token_stream) {
     token key_token = next_token(token_stream); // "key"
     if (key_token.type != STRING_TOKEN) {
         return 0;
@@ -415,5 +519,5 @@ unsigned int parse_object_property(token_stream *token_stream) {
     if (colon_token.type != COLON_TOKEN) {
         return 0;
     }
-    return parse_expression(token_stream);
+    return check_expression(token_stream);
 }
