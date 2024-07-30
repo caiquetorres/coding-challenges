@@ -82,8 +82,7 @@ int main(int argc, char **argv) {
     null_str = create_str("null");
     true_str = create_str("true");
     false_str = create_str("false");
-    int options;
-    options = read_options(argc, argv);
+    int options = read_options(argc, argv);
     int i = 1;
     while (i < argc && *(*(argv + i)) == '-') {
         i++;
@@ -106,15 +105,8 @@ int main(int argc, char **argv) {
 void check_file(char *file_path) {
     char_stream char_stream = create_char_stream(file_path);
     token_stream token_stream = create_token_stream(&char_stream);
-    // token t = next_token(&token_stream);
-    // while (t.type != EOF_TOKEN && t.type != BAD_TOKEN) {
-    //     print_token(&t);
-    //     t = next_token(&token_stream);
-    // }
-    // print_token(&t);
     int res = check_initial_expression(&token_stream);
     if (peek_token(&token_stream).type != EOF_TOKEN) {
-        token t = peek_token(&token_stream);
         res = 0;
     }
     char *file_name = file_path == NULL ? "stdin" : file_path;
@@ -267,12 +259,9 @@ token get_token(token_stream *ts) {
                     token.type = BAD_TOKEN;
                     return token;
                 }
-                if (peek_char(ts) != '\\') {
-                    next_char(ts);
-                } else {
+                if (peek_char(ts) == '\\')  {
                     next_char(ts); // backslash
                     if (peek_char(ts) == 'u') {
-
                         next_char(ts); // u
                         for (int i = 0; i < 4; i++) {
                             if (!is_hex(peek_char(ts))) {
@@ -285,8 +274,8 @@ token get_token(token_stream *ts) {
                         token.type = BAD_TOKEN;
                         return token;
                     }
-                    next_char(ts); // "
                 }
+                next_char(ts); // "
             }
             if (next_char(ts) == EOF) {
                 token.type = BAD_TOKEN;
@@ -373,9 +362,9 @@ token_stream create_token_stream(char_stream *char_stream) {
 }
 
 token next_token(token_stream *token_stream) {
-    token ans = token_stream->curr;
+    token t = token_stream->curr;
     token_stream->curr = get_token(token_stream);
-    return ans;
+    return t;
 }
 
 token peek_token(token_stream *token_stream) {
@@ -466,8 +455,8 @@ int check_array_expression(token_stream *token_stream, int depth) {
     if (depth > MAX_DEPTH) {
         return 0;
     }
-    token left_BRACE = next_token(token_stream); // [
-    if (left_BRACE.type != LEFT_BRACE_TOKEN) {
+    token left_brace = next_token(token_stream); // [
+    if (left_brace.type != LEFT_BRACE_TOKEN) {
         return 0;
     }
     int res = 1;
@@ -487,8 +476,8 @@ int check_array_expression(token_stream *token_stream, int depth) {
             }
         }
     }
-    token right_BRACE = next_token(token_stream); // ]
-    if (right_BRACE.type != RIGHT_BRACE_TOKEN) {
+    token right_brace = next_token(token_stream); // ]
+    if (right_brace.type != RIGHT_BRACE_TOKEN) {
         return 0;
     }
     return 1;
@@ -499,8 +488,8 @@ int check_object_expression(token_stream *token_stream, int depth) {
     if (depth > MAX_DEPTH) {
         return 0;
     }
-    token left_BRACKET = next_token(token_stream); // {
-    if (left_BRACKET.type != LEFT_BRACKET_TOKEN) {
+    token left_bracket = next_token(token_stream); // {
+    if (left_bracket.type != LEFT_BRACKET_TOKEN) {
         return 0;
     }
     int res = 1;
@@ -523,8 +512,8 @@ int check_object_expression(token_stream *token_stream, int depth) {
     if (!res) {
         return 0;
     }
-    token right_BRACKET = next_token(token_stream); // }
-    if (right_BRACKET.type != RIGHT_BRACKET_TOKEN) {
+    token right_bracket = next_token(token_stream); // }
+    if (right_bracket.type != RIGHT_BRACKET_TOKEN) {
         return 0;
     }
     return 1;
