@@ -118,7 +118,7 @@ void run_for_streams(int count, char_stream *streams, int options) {
 
 char_stream create_char_stream(char *file_path) {
     char_stream stream;
-    if (file_path) {
+    if (file_path != NULL) {
         FILE *file = NULL;
         file = fopen(file_path, "r");
         if (file == NULL) {
@@ -131,7 +131,7 @@ char_stream create_char_stream(char *file_path) {
         stream.file_path = NULL;
         stream.file = stdin;
     }
-    stream.curr = getc(stream.file);
+    stream.curr = fgetc(stream.file);
     return stream;
 }
 
@@ -162,17 +162,13 @@ int read_options(int argc, char **argv) {
         }
         if (str_compare("-c", arg)) {
             options |= BYTE_COUNT;
-        }
-        if (str_compare("-l", arg)) {
+        } else if (str_compare("-l", arg)) {
             options |= LINE_COUNT;
-        }
-        if (str_compare("-w", arg)) {
+        } else if (str_compare("-w", arg)) {
             options |= WORDS_COUNT;
-        }
-        if (str_compare("-m", arg)) {
+        } else if (str_compare("-m", arg)) {
             options |= CHARS_COUNT;
-        }
-        if (!options) {
+        } else {
             fprintf(stderr, "ccwc: invalid option '%s'\n", arg);
             exit(0);
         }
