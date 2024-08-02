@@ -2,42 +2,94 @@
 #include <stdlib.h>
 
 #define MAX_HEAP_SIZE 256
+#define FILE_PATH_OPTION (1 << 0)
+#define OUTPUT_FILE_PATH_OPTION (1 << 1)
 
-typedef struct heap_node {
-    char value;
-    int priority;
-} heap_node;
+typedef struct char_stream {
+    FILE *file;
+    char curr;
+} char_stream;
+
+char_stream *create_char_stream(char *);
+char next_char(char_stream *);
+char peek_char(char_stream *);
+void destroy_char_stream(char_stream *);
+
+void count_occurrences(long[256], char_stream *);
+
+typedef struct huffman_node {
+    char c;
+    long frequency;
+    struct huffman_node *left;
+    struct huffman_node *right;
+} huffman_node;
+
+huffman_node *create_huffman_node(char, long, huffman_node *, huffman_node *);
+huffman_node *create_huffman_tree(long [256]);
+void print_huffman_node(huffman_node *);
 
 typedef struct min_heap {
     int size;
-    heap_node buffer[MAX_HEAP_SIZE];
+    huffman_node *buffer[MAX_HEAP_SIZE];
 } min_heap;
 
 min_heap *create_heap();
-void heap_push(min_heap *, char, int);
-heap_node *heap_peek(min_heap *);
-heap_node heap_pop(min_heap *);
+void heap_push(min_heap *, huffman_node *);
+huffman_node *heap_peek(min_heap *);
+huffman_node *heap_pop(min_heap *);
+int heap_size(min_heap *);
+char is_heap_empty(min_heap *);
 void _heap_heapify(min_heap *, int);
-void _heap_decrease(min_heap *, int, char, int);
 int _heap_parent(int);
 int _heap_left(int);
 int _heap_right(int);
-void _heap_swap(heap_node *, heap_node *);
+void _heap_swap(huffman_node **, huffman_node **);
 
 void print_binary(unsigned char);
 
 int main() {
-    min_heap *heap = create_heap();
-    heap_push(heap, 'c', 10);
-    heap_push(heap, 'u', 1);
-    heap_push(heap, 'a', 9);
-    heap_push(heap, 'i', 12);
-    heap_push(heap, 'q', 11);
-    while (heap->size > 0) {
-        heap_node node = heap_pop(heap);
-        printf("%c, %d\n", node.value, node.priority);
-    }
+    char_stream *stream = create_char_stream("test/file.txt");
+    long occ[256];
+    count_occurrences(occ, stream);
+    huffman_node *root = create_huffman_tree(occ);
     return 0;
+}
+
+char_stream *create_char_stream(char *file_path) {
+    char_stream *stream = (char_stream *)malloc(sizeof(char_stream));
+    FILE *file;
+    file = fopen(file_path, "r");
+    if (file == NULL) {
+        fprintf(stderr, "ccct: file %s not found.", file_path);
+        exit(0);
+    }
+    stream->file = file;
+    stream->curr = fgetc(file);
+    return stream;
+}
+
+char peek_char(char_stream *stream) {
+    return stream->curr;
+}
+
+char next_char(char_stream *stream) {
+    char curr = stream->curr;
+    stream->curr = fgetc(stream->file);
+    return curr;
+}
+
+void destroy_char_stream(char_stream *stream) {
+    fclose(stream->file);
+}
+
+void count_occurrences(long occ[256], char_stream *stream) {
+    for (int i = 0; i < 256; i++) {
+        *(occ + i) = 0;
+    }
+    while (peek_char(stream) != EOF) {
+        char c = next_char(stream);
+        *(occ + c) += 1;
+    }
 }
 
 min_heap *create_heap() {
@@ -47,66 +99,65 @@ min_heap *create_heap() {
     return heap;
 }
 
-void heap_push(min_heap *heap, char value, int priority) {
-    if (heap->size + 1 > MAX_HEAP_SIZE) {
-        fprintf(stderr, "ccct: heap overflow error.");
+void heap_push(min_heap *heap, huffman_node *node) {
+    if (heap_size(heap) + 1 > MAX_HEAP_SIZE) {
+        fprintf(stderr, "ccct: heap overflow error.\n");
         exit(0);
     }
-    heap_node node = { value, priority };
     heap->size++;
     int i = heap->size - 1;
     *(heap->buffer + i) = node;
-    while (i > 0 && (heap->buffer + _heap_parent(i))->priority > (heap->buffer + i)->priority) {
+    int freq = (*(heap->buffer + i))->frequency;
+    while (i > 0 && (*(heap->buffer + _heap_parent(i)))->frequency > (*(heap->buffer + i))->frequency) {
         _heap_swap(heap->buffer + i, heap->buffer + _heap_parent(i));
         i = _heap_parent(i);
     }
 }
 
-heap_node *heap_peek(min_heap *heap) {
+huffman_node *heap_peek(min_heap *heap) {
     if (heap->size == 0) {
         return NULL;
     }
-    return heap->buffer;
+    return *heap->buffer;
 }
 
-heap_node heap_pop(min_heap *heap) {
-    if (heap->size == 0) {
-        fprintf(stderr, "ccct: heap underflow error.");
+huffman_node *heap_pop(min_heap *heap) {
+    if (is_heap_empty(heap)) {
+        fprintf(stderr, "ccct: heap underflow error.\n");
         exit(0);
     }
-    if (heap->size == 1) {
+    if (heap_size(heap) == 1) {
         heap->size--;
         return *heap->buffer;
     }
-    heap_node root = *(heap->buffer);
+    huffman_node *root = *(heap->buffer);
     *(heap->buffer) = *(heap->buffer + heap->size - 1);
     heap->size--;
     _heap_heapify(heap, 0);
     return root;
 }
 
+int heap_size(min_heap *heap) {
+    return heap->size;
+}
+
+char is_heap_empty(min_heap *heap) {
+    return heap->size == 0;
+}
+
 void _heap_heapify(min_heap *heap, int i) {
     int left = _heap_left(i);
     int right = _heap_right(i);
     int smallest = i;
-    if (left < heap->size && (heap->buffer + left)->priority < (heap->buffer + i)->priority) {
+    if (left < heap->size && (*(heap->buffer + left))->frequency < (*(heap->buffer + i))->frequency) {
         smallest = left;
     }
-    if (right < heap->size && (heap->buffer + right)->priority < (heap->buffer + smallest)->priority) {
+    if (right < heap->size && (*(heap->buffer + right))->frequency < (*(heap->buffer + smallest))->frequency) {
         smallest = right;
     }
     if (smallest != i) {
         _heap_swap(heap->buffer + i, heap->buffer + smallest);
         _heap_heapify(heap, smallest);
-    }
-}
-
-void _heap_decrease(min_heap *heap, int i, char value, int priority) {
-    heap_node node = { value, priority };
-    *(heap->buffer + i) = node;
-    while (i != 0 && (heap->buffer + _heap_parent(i))->priority > (heap->buffer + i)->priority) {
-        _heap_swap(heap->buffer + i, heap->buffer + _heap_parent(i));
-        i = _heap_parent(i);
     }
 }
 
@@ -122,8 +173,8 @@ int _heap_right(int i) {
     return 2 * i + 2;
 }
 
-void _heap_swap(heap_node *x, heap_node *y) {
-    heap_node temp = *x;
+void _heap_swap(huffman_node **x, huffman_node **y) {
+    huffman_node *temp = *x;
     *x = *y;
     *y = temp;
 }
@@ -136,5 +187,36 @@ void print_binary(unsigned char c) {
             printf("0");
         }
     }
-    printf("\n");
+}
+
+huffman_node *create_huffman_node(char c, long freq, huffman_node *left, huffman_node *right) {
+    huffman_node *node = NULL;
+    node = (huffman_node *)malloc(sizeof(huffman_node));
+    node->c = c;
+    node->frequency = freq;
+    node->left = left;
+    node->right = right;
+    return node;
+}
+
+huffman_node *create_huffman_tree(long occurrences[256]) {
+   min_heap *heap = create_heap();
+    for (int c = 0; c < 256; c++) {
+        if (occurrences[c] != 0) {
+            huffman_node *node = create_huffman_node(c, occurrences[c], NULL, NULL);
+            heap_push(heap, node);
+        }
+    }
+    while (heap_size(heap) > 1) {
+        huffman_node *left = heap_pop(heap);
+        huffman_node *right = heap_pop(heap);
+        long new_freq = left->frequency + right->frequency;
+        huffman_node *new_node = create_huffman_node(' ', new_freq, left, right);
+        heap_push(heap, new_node);
+    }
+    return heap_peek(heap);
+}
+
+void print_huffman_node(huffman_node *node) {
+    printf("%c, %ld, %p, %p\n", node->c, node->frequency, node->left, node->right);
 }
