@@ -5,26 +5,30 @@
 #define FILE_PATH_OPTION (1 << 0)
 #define OUTPUT_FILE_PATH_OPTION (1 << 1)
 
-typedef struct char_stream {
+typedef struct file_stream_reader {
     FILE *file;
     char curr;
-} char_stream;
+    char cur_bit;
+} file_stream_reader;
 
-char_stream *create_char_stream(char *);
-char next_char(char_stream *);
-char peek_char(char_stream *);
-void destroy_char_stream(char_stream *);
+file_stream_reader *create_file_stream_reader(char *);
+char next_byte(file_stream_reader *);
+char peek_byte(file_stream_reader *);
+char next_bit(file_stream_reader *);
+char peek_bit(file_stream_reader *);
+void reset_file_stream_reader(file_stream_reader *);
+void destroy_file_stream_reader(file_stream_reader *);
 
-void count_occurrences(long[256], char_stream *);
+void count_occurrences(long[256], file_stream_reader *);
 
 typedef struct huffman_node {
-    char c;
+    unsigned char value;
     long frequency;
     struct huffman_node *left;
     struct huffman_node *right;
 } huffman_node;
 
-huffman_node *create_huffman_node(char, long, huffman_node *, huffman_node *);
+huffman_node *create_huffman_node(unsigned char, long, huffman_node *, huffman_node *);
 huffman_node *create_huffman_tree(long [256]);
 void print_huffman_node(huffman_node *);
 
@@ -47,16 +51,146 @@ void _heap_swap(huffman_node **, huffman_node **);
 
 void print_binary(unsigned char);
 
+typedef struct linked_list_node {
+    unsigned char value;
+    struct linked_list_node *next;
+} linked_list_node;
+
+typedef struct stack {
+    linked_list_node *head;
+    int size;
+} stack;
+
+stack *create_stack();
+void stack_push(stack *, unsigned char);
+char stack_pop(stack *);
+
+void _create_huffman_map(char *[256], stack *, huffman_node *);
+void create_huffman_map(char *[256], huffman_node *);
+
+int str_len(char *);
+
+typedef struct file_stream_writer {
+    FILE *file;
+    unsigned char cur_bit;
+    unsigned char cur_byte;
+} file_stream_writer;
+
+file_stream_writer *create_file_stream_writer(char *);
+void write_byte(file_stream_writer *, unsigned char);
+void write_bit(file_stream_writer *, unsigned char);
+void destroy_file_stream_writer(file_stream_writer *);
+
+void encode(char *, char *);
+void decode();
+
 int main() {
-    char_stream *stream = create_char_stream("test/file.txt");
-    long occ[256];
-    count_occurrences(occ, stream);
-    huffman_node *root = create_huffman_tree(occ);
+    encode("test/file.txt", "output.huff");
+    decode();
     return 0;
 }
 
-char_stream *create_char_stream(char *file_path) {
-    char_stream *stream = (char_stream *)malloc(sizeof(char_stream));
+char _decode_dfs(file_stream_reader *reader, huffman_node *node) {
+    if (node->left == NULL && node->right == NULL) {
+        return node->value;
+    }
+    if (next_bit(reader) == 0) {
+        return _decode_dfs(reader, node->left);
+    } else {
+        return _decode_dfs(reader, node->right);
+    }
+}
+
+void decode() {
+    file_stream_reader *file_reader = create_file_stream_reader("test/file.txt");
+
+    long occ[256];
+    count_occurrences(occ, file_reader);
+    reset_file_stream_reader(file_reader);
+
+    int total_byte_count = 0;
+    while (peek_byte(file_reader) != EOF) {
+        total_byte_count++;
+        next_byte(file_reader);
+    }
+
+    huffman_node *root = create_huffman_tree(occ);
+    file_stream_reader *encoded_file_reader = create_file_stream_reader("output.huff");
+
+    file_stream_writer *decoded_file_writer = create_file_stream_writer("decoded-huff.txt");
+
+    for (int i = 0; i < total_byte_count; i++) {
+        char c = _decode_dfs(encoded_file_reader, root);
+        write_byte(decoded_file_writer, c);
+    }
+}
+
+void encode(char *src_path, char *output_path) {
+    file_stream_reader *reader = create_file_stream_reader(src_path);
+
+    long occ[256];
+    count_occurrences(occ, reader);
+
+    huffman_node *root = create_huffman_tree(occ);
+
+    char *map[256];
+    create_huffman_map(map, root);
+
+    // for (int i = 0; i < 256; i++) {
+    //     if (*(map + i) != NULL) {
+    //         printf("%s, %c\n", *(map + i), i);
+    //     }
+    // }
+
+    reset_file_stream_reader(reader);
+    file_stream_writer *writer = create_file_stream_writer(output_path);
+    while (peek_byte(reader) != EOF) {
+        unsigned char c = peek_byte(reader);
+        char *path = map[c];
+        for (int i = 0; i < str_len(path); i++) {
+            char digit = *(path + i);
+            write_bit(writer, digit);
+        }
+        next_byte(reader);
+    }
+
+    destroy_file_stream_reader(reader);
+    destroy_file_stream_writer(writer);
+}
+
+file_stream_writer *create_file_stream_writer(char *file_path) {
+    file_stream_writer *stream = (file_stream_writer *)malloc(sizeof(file_stream_writer));
+    FILE *file;
+    file = fopen(file_path, "w");
+    stream->file = file;
+    stream->cur_bit = 7;
+    stream->cur_byte = 0;
+    return stream;
+}
+
+void write_bit(file_stream_writer *writer, unsigned char bit) {
+    if (bit == '1') {
+        writer->cur_byte |= (1 << writer->cur_bit);
+    }
+    if (writer->cur_bit == 0) {
+        writer->cur_bit = 7;
+        write_byte(writer, writer->cur_byte);
+        writer->cur_byte = 0;
+    } else {
+        writer->cur_bit--;
+    }
+}
+
+void write_byte(file_stream_writer *writer, unsigned char byte) {
+    fwrite(&byte, 1, 1, writer->file);
+}
+
+void destroy_file_stream_writer(file_stream_writer *writer) {
+    fclose(writer->file);
+}
+
+file_stream_reader *create_file_stream_reader(char *file_path) {
+    file_stream_reader *stream = (file_stream_reader *)malloc(sizeof(file_stream_reader));
     FILE *file;
     file = fopen(file_path, "r");
     if (file == NULL) {
@@ -65,29 +199,52 @@ char_stream *create_char_stream(char *file_path) {
     }
     stream->file = file;
     stream->curr = fgetc(file);
+    stream->cur_bit = 7;
     return stream;
 }
 
-char peek_char(char_stream *stream) {
+char peek_byte(file_stream_reader *stream) {
     return stream->curr;
 }
 
-char next_char(char_stream *stream) {
+char next_byte(file_stream_reader *stream) {
     char curr = stream->curr;
     stream->curr = fgetc(stream->file);
     return curr;
 }
 
-void destroy_char_stream(char_stream *stream) {
+char peek_bit(file_stream_reader *reader) {
+    char bit = reader->curr & (1 << reader->cur_bit);
+    return bit != 0 ? 1 : 0;
+}
+
+char next_bit(file_stream_reader *reader) {
+    char bit = reader->curr & (1 << reader->cur_bit);
+    if (reader->cur_bit == 0) {
+        reader->cur_bit = 7;
+        next_byte(reader);
+    } else {
+        reader->cur_bit--;
+    }
+    return bit != 0 ? 1 : 0;
+}
+
+void reset_file_stream_reader(file_stream_reader *stream) {
+    rewind(stream->file);
+    stream->curr = fgetc(stream->file);
+}
+
+void destroy_file_stream_reader(file_stream_reader *stream) {
     fclose(stream->file);
 }
 
-void count_occurrences(long occ[256], char_stream *stream) {
+void count_occurrences(long occ[256], file_stream_reader *stream) {
     for (int i = 0; i < 256; i++) {
-        *(occ + i) = 0;
+        unsigned char c = i;
+        *(occ + c) = 0;
     }
-    while (peek_char(stream) != EOF) {
-        char c = next_char(stream);
+    while (peek_byte(stream) != EOF) {
+        unsigned char c = next_byte(stream);
         *(occ + c) += 1;
     }
 }
@@ -189,10 +346,10 @@ void print_binary(unsigned char c) {
     }
 }
 
-huffman_node *create_huffman_node(char c, long freq, huffman_node *left, huffman_node *right) {
+huffman_node *create_huffman_node(unsigned char c, long freq, huffman_node *left, huffman_node *right) {
     huffman_node *node = NULL;
     node = (huffman_node *)malloc(sizeof(huffman_node));
-    node->c = c;
+    node->value = c;
     node->frequency = freq;
     node->left = left;
     node->right = right;
@@ -201,7 +358,8 @@ huffman_node *create_huffman_node(char c, long freq, huffman_node *left, huffman
 
 huffman_node *create_huffman_tree(long occurrences[256]) {
    min_heap *heap = create_heap();
-    for (int c = 0; c < 256; c++) {
+    for (int i = 0; i < 256; i++) {
+        unsigned char c = i;
         if (occurrences[c] != 0) {
             huffman_node *node = create_huffman_node(c, occurrences[c], NULL, NULL);
             heap_push(heap, node);
@@ -217,6 +375,75 @@ huffman_node *create_huffman_tree(long occurrences[256]) {
     return heap_peek(heap);
 }
 
+stack *create_stack() {
+    stack *s = (stack *)malloc(sizeof(stack));
+    s->head = NULL;
+    s->size = 0;
+    return s;
+}
+
+void stack_push(stack *s, unsigned char c) {
+    linked_list_node *node = (linked_list_node *)malloc(sizeof(linked_list_node));
+    node->value = c;
+    node->next = s->head;
+    s->head = node;
+    s->size++;
+}
+
+char stack_pop(stack *s) {
+    if (s->size == 0) {
+        fprintf(stderr, "ccct: stack underflow error.\n");
+        exit(0);
+    }
+    linked_list_node *node = s->head;
+    char c = node->value;
+    s->head = s->head->next;
+    s->size--;
+    free(node);
+    return c;
+}
+
+void _create_huffman_map(char *map[256], stack *s, huffman_node *node) {
+    if (node == NULL) {
+        return;
+    }
+    if (node->left == NULL && node->right == NULL) {
+        linked_list_node *list_node = s->head;
+        char *path = (char *)malloc(s->size + 1);
+        int i = 0;
+        while (list_node != NULL) {
+            *(path + s->size - i - 1) = list_node->value;
+            list_node = list_node->next;
+            i++;
+        }
+        *(path + i) = '\0';
+        map[node->value] = path;
+    }
+    stack_push(s, '0');
+    _create_huffman_map(map, s, node->left);
+    stack_pop(s);
+    stack_push(s, '1');
+    _create_huffman_map(map, s, node->right);
+    stack_pop(s);
+}
+
+void create_huffman_map(char *map[256], huffman_node *root) {
+    for (int c = 0; c < 256; c++) {
+        *(map + c) = NULL;
+    }
+    stack *s = create_stack();
+    _create_huffman_map(map, s, root);
+    free(s);
+}
+
+int str_len(char *str) {
+    int len = 0;
+    while (*(str + len) != '\0') {
+        len++;
+    }
+    return len;
+}
+
 void print_huffman_node(huffman_node *node) {
-    printf("%c, %ld, %p, %p\n", node->c, node->frequency, node->left, node->right);
+    printf("%c, %ld, %p, %p\n", node->value, node->frequency, node->left, node->right);
 }
