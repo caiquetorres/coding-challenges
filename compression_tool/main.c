@@ -128,15 +128,22 @@ void encode(char *src_path, char *out_path) {
         write_number(out_writer, freq);
     }
     write_byte(out_writer, ';');
+    long int total_bits_count = 0;
     while (peek_byte(src_reader) != EOF) {
         unsigned char c = peek_byte(src_reader);
         char *path = map[c];
         int path_len = str_len(path);
         for (int i = 0; i < path_len; i++) {
             char digit = *(path + i);
+            total_bits_count++;
             write_bit(out_writer, digit - '0');
         }
         next_byte(src_reader);
+    }
+    // Here we're writing the bit 0 to make the total count a multiple of 8 (byte size).
+    long int remain_count = 8 - total_bits_count % 8;
+    for (int i = 0; i < remain_count; i++) {
+        write_bit(out_writer, 0);
     }
     destroy_file_stream_reader(src_reader);
     destroy_file_stream_writer(out_writer);
