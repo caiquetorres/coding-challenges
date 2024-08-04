@@ -16,6 +16,7 @@ typedef struct stack {
 stack *create_stack();
 void stack_push(stack *, unsigned char);
 char stack_pop(stack *);
+int stack_size(stack *);
 
 typedef struct file_stream_reader {
     FILE *file;
@@ -76,6 +77,7 @@ void create_huffman_map(char *[256], huffman_node *);
 void _fill_huffman_map(char *[256], stack *, huffman_node *);
 
 int str_len(char *);
+int str_compare(char *, char *);
 void print_binary(unsigned char);
 char is_numeric(char);
 
@@ -85,10 +87,108 @@ void decode(char *, char *);
 long int _decode_number(file_stream_reader *);
 char _decode_huff(file_stream_reader *, huffman_node *);
 
-int main() {
-    encode("test/book.txt", "out/output.huff");
-    decode("out/output.huff", "out/decoded.txt");
+typedef struct arg_stream {
+    unsigned int argc;
+    unsigned int i;
+    char *arg;
+    char **argv;
+} arg_stream;
+
+arg_stream *create_arg_stream(unsigned int, char **);
+char *peek_arg(arg_stream *);
+char *next_arg(arg_stream *);
+
+int main(int argc, char **argv) {
+    arg_stream *args = create_arg_stream(argc, argv);
+    char *command = next_arg(args);
+    if (command == NULL) {
+        fprintf(stderr, "ccct error: missing command, expected 'encode' or 'decode'.\n");
+        exit(0);
+    }
+    if (str_compare(command, "encode")) {
+        if (peek_arg(args) == NULL) {
+           fprintf(stderr, "ccct error: missing option, expected '-f'.\n");
+            exit(0);
+        }
+        if (!str_compare(next_arg(args), "-f") && !str_compare(next_arg(args), "--file")) {
+           fprintf(stderr, "ccct error: invalid option '%s', expected '-f' (source file path).\n", command);
+            exit(0);
+        }
+        if (peek_arg(args) == NULL) {
+           fprintf(stderr, "ccct error: missing value, expected the source file path.\n");
+            exit(0);
+        }
+        char *src_path = next_arg(args);
+        if (peek_arg(args) == NULL) {
+           fprintf(stderr, "ccct error: missing option, expected '-o'.\n");
+            exit(0);
+        }
+        if (!str_compare(next_arg(args), "-o")) {
+           fprintf(stderr, "ccct error: invalid option '%s', expected '-o' (output file path).\n", command);
+            exit(0);
+        }
+        if (peek_arg(args) == NULL) {
+           fprintf(stderr, "ccct error: missing value, expected the output file path.\n");
+            exit(0);
+        }
+        char *out_path = next_arg(args);
+        encode(src_path, out_path);
+    } else if (str_compare(command, "decode")) {
+        if (peek_arg(args) == NULL) {
+           fprintf(stderr, "ccct error: missing option, expected '-f'.\n");
+            exit(0);
+        }
+        if (!str_compare(next_arg(args), "-f")) {
+           fprintf(stderr, "ccct error: invalid option '%s', expected '-f' (source file path).\n", command);
+            exit(0);
+        }
+        if (peek_arg(args) == NULL) {
+           fprintf(stderr, "ccct error: missing value, expected the source file path.\n");
+            exit(0);
+        }
+        char *src_path = next_arg(args);
+        if (peek_arg(args) == NULL) {
+           fprintf(stderr, "ccct error: missing option, expected '-o'.\n");
+            exit(0);
+        }
+        if (!str_compare(next_arg(args), "-o")) {
+           fprintf(stderr, "ccct error: invalid option '%s', expected '-o' (output file path).\n", command);
+            exit(0);
+        }
+        if (peek_arg(args) == NULL) {
+           fprintf(stderr, "ccct error: missing value, expected the output file path.\n");
+            exit(0);
+        }
+        char *out_path = next_arg(args);
+        decode(src_path, out_path);
+    } else {
+        fprintf(stderr, "ccct error: invalid command '%s', expected 'encode' or 'decode'.\n", command);
+        exit(0);
+    }
     return 0;
+}
+
+arg_stream *create_arg_stream(unsigned int argc, char **argv) {
+    arg_stream *stream = (arg_stream *)malloc(sizeof(arg_stream));
+    stream->i = 1;
+    stream->arg = *(argv + 1);
+    stream->argc = argc;
+    stream->argv = argv;
+    return stream;
+}
+
+char *peek_arg(arg_stream *stream) {
+    return stream->arg;
+}
+
+char *next_arg(arg_stream *stream) {
+    if (stream->i >= stream->argc) {
+        return NULL;
+    }
+    char *arg = peek_arg(stream);
+    stream->i++;
+    stream->arg = *(stream->argv + stream->i);
+    return arg;
 }
 
 void encode(char *src_path, char *out_path) {
@@ -123,7 +223,7 @@ void encode(char *src_path, char *out_path) {
             write_byte(out_writer, ',');
         }
         has_prev = 1;
-        write_byte(out_writer, c);
+        write_byte(out_writer, i);
         write_byte(out_writer, ':');
         write_number(out_writer, freq);
     }
@@ -150,7 +250,7 @@ void encode(char *src_path, char *out_path) {
 }
 
 void decode(char *src_path, char *out_path) {
-    long int occ[256];
+    long int occ[256] = { 0 };
     long int total_byte_count = 0;
     file_stream_reader *src_reader = create_file_stream_reader(src_path);
     file_stream_writer *out_writer = create_file_stream_writer(out_path);
@@ -158,7 +258,7 @@ void decode(char *src_path, char *out_path) {
     int i = 0;
     do {
         if (*(file_type + i) != next_byte(src_reader)) {
-            fprintf(stderr, "ccct: expected a HUFF file\n");
+            fprintf(stderr, "ccct error: expected a HUFF file\n");
             exit(0);
         }
         i++;
@@ -252,7 +352,7 @@ void write_number(file_stream_writer *writer, long int number) {
         stack_push(s, number % 10 + '0');
         number /= 10;
     }
-    while (s->size > 0) {
+    while (stack_size(s) > 0) {
         char c = stack_pop(s);
         write_byte(writer, c);
     }
@@ -268,7 +368,7 @@ file_stream_reader *create_file_stream_reader(char *file_path) {
     FILE *file;
     file = fopen(file_path, "r");
     if (file == NULL) {
-        fprintf(stderr, "ccct: file %s not found.\n", file_path);
+        fprintf(stderr, "ccct error: file %s not found.\n", file_path);
         exit(0);
     }
     stream->file = file;
@@ -332,11 +432,11 @@ min_heap *create_heap() {
 
 void heap_push(min_heap *heap, huffman_node *node) {
     if (heap_size(heap) + 1 > MAX_HEAP_SIZE) {
-        fprintf(stderr, "ccct: heap overflow error.\n");
+        fprintf(stderr, "ccct error: heap overflow error.\n");
         exit(0);
     }
     heap->size++;
-    int i = heap->size - 1;
+    int i = heap_size(heap) - 1;
     *(heap->buffer + i) = node;
     int freq = (*(heap->buffer + i))->frequency;
     while (i > 0 && (*(heap->buffer + _heap_parent(i)))->frequency > (*(heap->buffer + i))->frequency) {
@@ -346,7 +446,7 @@ void heap_push(min_heap *heap, huffman_node *node) {
 }
 
 huffman_node *heap_peek(min_heap *heap) {
-    if (heap->size == 0) {
+    if (heap_size(heap) == 0) {
         return NULL;
     }
     return *heap->buffer;
@@ -354,7 +454,7 @@ huffman_node *heap_peek(min_heap *heap) {
 
 huffman_node *heap_pop(min_heap *heap) {
     if (is_heap_empty(heap)) {
-        fprintf(stderr, "ccct: heap underflow error.\n");
+        fprintf(stderr, "ccct error: heap underflow error.\n");
         exit(0);
     }
     if (heap_size(heap) == 1) {
@@ -362,7 +462,7 @@ huffman_node *heap_pop(min_heap *heap) {
         return *heap->buffer;
     }
     huffman_node *root = *(heap->buffer);
-    *(heap->buffer) = *(heap->buffer + heap->size - 1);
+    *(heap->buffer) = *(heap->buffer + heap_size(heap) - 1);
     heap->size--;
     _heap_heapify(heap, 0);
     return root;
@@ -373,17 +473,17 @@ int heap_size(min_heap *heap) {
 }
 
 char is_heap_empty(min_heap *heap) {
-    return heap->size == 0;
+    return heap_size(heap) == 0;
 }
 
 void _heap_heapify(min_heap *heap, int i) {
     int left = _heap_left(i);
     int right = _heap_right(i);
     int smallest = i;
-    if (left < heap->size && (*(heap->buffer + left))->frequency < (*(heap->buffer + i))->frequency) {
+    if (left < heap_size(heap) && (*(heap->buffer + left))->frequency < (*(heap->buffer + i))->frequency) {
         smallest = left;
     }
-    if (right < heap->size && (*(heap->buffer + right))->frequency < (*(heap->buffer + smallest))->frequency) {
+    if (right < heap_size(heap) && (*(heap->buffer + right))->frequency < (*(heap->buffer + smallest))->frequency) {
         smallest = right;
     }
     if (smallest != i) {
@@ -465,8 +565,8 @@ void stack_push(stack *s, unsigned char c) {
 }
 
 char stack_pop(stack *s) {
-    if (s->size == 0) {
-        fprintf(stderr, "ccct: stack underflow error.\n");
+    if (stack_size(s) == 0) {
+        fprintf(stderr, "ccct error: stack underflow error.\n");
         exit(0);
     }
     linked_list_node *node = s->head;
@@ -477,16 +577,20 @@ char stack_pop(stack *s) {
     return c;
 }
 
+int stack_size(stack *s) {
+    return s->size;
+}
+
 void _fill_huffman_map(char *map[256], stack *s, huffman_node *node) {
     if (node == NULL) {
         return;
     }
     if (node->left == NULL && node->right == NULL) {
         linked_list_node *list_node = s->head;
-        char *path = (char *)malloc(s->size + 1);
+        char *path = (char *)malloc(stack_size(s) + 1);
         int i = 0;
         while (list_node != NULL) {
-            *(path + s->size - i - 1) = list_node->value;
+            *(path + stack_size(s) - i - 1) = list_node->value;
             list_node = list_node->next;
             i++;
         }
@@ -513,6 +617,20 @@ int str_len(char *str) {
         len++;
     }
     return len;
+}
+
+int str_compare(char *str1, char *str2) {
+    int len1 = str_len(str1);
+    int len2 = str_len(str2);
+    if (len1 != len2) {
+        return 0;
+    }
+    for (int i = 0; i < len1; i++) {
+        if (*(str1 + i) != *(str2 + i)) {
+            return 0;
+        }
+    }
+    return 1;
 }
 
 char is_numeric(char c) {
