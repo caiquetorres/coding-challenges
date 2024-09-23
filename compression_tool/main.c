@@ -240,7 +240,8 @@ void encode(char *src_path, char *out_path) {
         }
         next_byte(src_reader);
     }
-    // Here we're writing the bit 0 to make the total count a multiple of 8 (byte size).
+    // Here we're writing the bit 0 to make the total count a multiple of
+    // 8 (byte size).
     long int remain_count = 8 - total_bits_count % 8;
     for (int i = 0; i < remain_count; i++) {
         write_bit(out_writer, 0);
